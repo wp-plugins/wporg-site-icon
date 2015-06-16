@@ -3,7 +3,7 @@
 Plugin Name: WP.org Site Icon
 Plugin URL: http://wordpress.org/
 Description: Add a site icon for your website.
-Version: 2
+Version: 3
 License: GNU General Public License v2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 Author: wordpressdotorg
@@ -73,8 +73,6 @@ class WP_Site_Icon {
 		add_action( 'atom_head',  array( $this, 'atom_icon' ) );
 		add_action( 'rss2_head',  array( $this, 'rss2_icon' ) );
 
-
-		add_action( 'delete_option',     array( $this, 'delete_temp_data' ), 10, 1 ); // used to clean up after itself.
 		add_action( 'delete_attachment', array( $this, 'delete_attachment_data' ), 10, 1 ); // in case user deletes the attachment via
 		add_filter( 'get_post_metadata', array( $this, 'delete_attachment_images' ), 10, 4 );
 	}
