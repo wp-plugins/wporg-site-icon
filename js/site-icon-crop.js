@@ -1,7 +1,7 @@
 /* global wpSiteIconCropDatas, jQuery */
 (function($) {
 	var jcrop_api = {},
-		Site_Icon_Crop = {
+		siteIconCrop = {
 
 		updateCoords : function ( coords ) {
 
@@ -10,7 +10,7 @@
 			$('#crop-width').val( coords.w );
 			$('#crop-height').val( coords.h );
 
-			Site_Icon_Crop.showPreview( coords );
+			siteIconCrop.showPreview( coords );
 		},
 
 		showPreview : function( coords ){
@@ -40,8 +40,8 @@
 			jcrop_api = $.Jcrop('#crop-image');
 			jcrop_api.setOptions({
 				aspectRatio: 1,
-				onSelect: Site_Icon_Crop.updateCoords,
-				onChange: Site_Icon_Crop.updateCoords,
+				onSelect: siteIconCrop.updateCoords,
+				onChange: siteIconCrop.updateCoords,
 				minSize: [ wpSiteIconCropData.min_size, wpSiteIconCropData.min_size ]
 			});
 			jcrop_api.animateTo([wpSiteIconCropData.init_x, wpSiteIconCropData.init_y, wpSiteIconCropData.init_size, wpSiteIconCropData.init_size]);
@@ -49,6 +49,6 @@
 
 	};
 
-	Site_Icon_Crop.ready();
+	siteIconCrop.ready();
 
 })(jQuery);

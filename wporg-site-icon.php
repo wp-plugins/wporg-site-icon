@@ -3,7 +3,7 @@
 Plugin Name: WP.org Site Icon
 Plugin URL: http://wordpress.org/
 Description: Add a site icon for your website.
-Version: 1
+Version: 2
 License: GNU General Public License v2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 Author: wordpressdotorg
