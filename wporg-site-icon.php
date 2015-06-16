@@ -186,16 +186,10 @@ class WP_Site_Icon {
 	 *
 	 */
 	public function upload_site_icon_head() {
-		wp_register_script( 'site-icon-crop', plugin_dir_url( __FILE__ ) . 'js/site-icon-crop.js', array(
-			'jquery',
-			'jcrop'
-		) );
-
 		if ( isset( $_REQUEST['step'] ) && $_REQUEST['step'] == 2 ) {
-			wp_enqueue_script( 'site-icon-crop' );
-			wp_enqueue_style( 'jcrop' );
+			wp_enqueue_script( 'site-icon-crop', plugin_dir_url( __FILE__ ) . 'js/site-icon-crop.js', array( 'jquery', 'jcrop' ) );
 		}
-		wp_enqueue_style( 'site-icon-admin' );
+		wp_enqueue_style( 'site-icon-admin', plugin_dir_url( __FILE__ ) . 'css/site-icon-admin.css' );
 	}
 
 	public function add_media_state( $media_states ) {
@@ -210,9 +204,6 @@ class WP_Site_Icon {
 	 * Load on when the admin is initialized
 	 */
 	public function admin_init() {
-		// register the styles and scripts.
-		wp_register_style( 'site-icon-admin', plugin_dir_url( __FILE__ ) . 'css/site-icon-admin.css' );
-
 		// register the settings
 		add_settings_section( 'wp-site-icon', '<span id="wporg-site-title">' . __( 'Site Icon' ) . '</span>', array( $this, 'settings_section' ), 'general' );
 
@@ -237,8 +228,10 @@ class WP_Site_Icon {
 			) {
 
 				$site_icon_id = get_option( 'site_icon_id' );
+
 				// Delete the previous site icon
 				$this->delete_site_icon( $site_icon_id, true );
+
 				wp_safe_redirect( admin_url( 'options-general.php#wporg-site-icon' ) );
 			}
 		}
@@ -262,6 +255,9 @@ class WP_Site_Icon {
 
 		// Lets delete the temp data that we might he holding on to.
 		$this->delete_temporay_data();
+
+		wp_enqueue_media();
+		wp_enqueue_script( 'custom-header' );
 
 		if ( has_site_icon() ) :
 			echo get_site_icon( null, 128 );
@@ -289,8 +285,6 @@ class WP_Site_Icon {
 			<?php
 
 		else :
-			wp_enqueue_media();
-			wp_enqueue_script( 'custom-header' );
 
 			// Display the site_icon form to upload the image
 			?>

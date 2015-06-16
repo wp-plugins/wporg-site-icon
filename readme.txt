@@ -1,6 +1,6 @@
 === Plugin Name ===
 Contributors: obenland, wordpressdotorg
-Tags: comments, spam
+Tags: favicon
 Requires at least: 4.2
 Tested up to: 4.3
 Stable tag: trunk
