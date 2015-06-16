@@ -67,18 +67,23 @@ class WP_Site_Icon {
 	public function __construct() {
 		include_once dirname( __FILE__ ) . '/site-icon-functions.php';
 
-		add_action( 'admin_menu',             array( $this, 'admin_menu_upload_site_icon' ) );
-		add_filter( 'display_media_states',   array( $this, 'add_media_state' ) );
-		add_action( 'admin_init',             array( $this, 'admin_init' ) );
-		add_action( 'admin_init',             array( $this, 'delete_site_icon_hook' ) );
-		add_action( 'atom_head',              array( $this, 'atom_icon' ) );
-		add_action( 'rss2_head',              array( $this, 'rss2_icon' ) );
+		add_action( 'admin_menu',           array( $this, 'admin_menu_upload_site_icon' ) );
+		add_filter( 'display_media_states', array( $this, 'add_media_state' ) );
 
-		add_action( 'admin_print_styles-options-general.php', array( $this, 'add_general_options_styles' ) );
+		add_action( 'load-options-general.php',           array( $this, 'add_general_settings' ) );
+		add_action( 'load-settings_page_wporg-site-icon', array( $this, 'add_upload_settings' ) );
+		add_action( 'load-settings_page_wporg-site-icon', array( $this, 'save_site_icon' ) );
+		add_action( 'admin_action_remove_site_icon',      array( $this, 'remove_site_icon' ) );
+
+		add_action( 'admin_print_scripts-options-general.php',           array( $this, 'enqueue_scripts' ) );
+		add_action( 'admin_print_scripts-settings_page_wporg-site-icon', array( $this, 'enqueue_scripts' ) );
 
 		// Add the favicon to the front end and backend.
 		add_action( 'wp_head',    array( $this, 'add_meta' ) );
 		add_action( 'admin_head', array( $this, 'add_meta' ) );
+		add_action( 'atom_head',  array( $this, 'atom_icon' ) );
+		add_action( 'rss2_head',  array( $this, 'rss2_icon' ) );
+
 
 		add_action( 'delete_option',     array( $this, 'delete_temp_data' ), 10, 1 ); // used to clean up after itself.
 		add_action( 'delete_attachment', array( $this, 'delete_attachment_data' ), 10, 1 ); // in case user deletes the attachment via
@@ -117,7 +122,7 @@ class WP_Site_Icon {
 	 * Display icons in RSS2.
 	 */
 	public function rss2_icon() {
-		/** This filter is documented in modules/site-icon/wp-site-icon.php */
+		/** This filter is documented in modules/site-icon/wporg-site-icon.php */
 		if ( apply_filters( 'site_icon_has_favicon', false ) ) {
 			return;
 		}
@@ -145,7 +150,7 @@ class WP_Site_Icon {
 	 *
 	 */
 	public function atom_icon() {
-		/** This filter is documented in modules/site-icon/wp-site-icon.php */
+		/** This filter is documented in modules/site-icon/wporg-site-icon.php */
 		if ( apply_filters( 'site_icon_has_favicon', false ) ) {
 			return;
 		}
@@ -158,40 +163,31 @@ class WP_Site_Icon {
 	}
 
 	/**
-	 * Add a hidden upload page from people
+	 * Add a hidden upload page.
+	 *
+	 * There is no need to access it directly.
 	 */
 	public function admin_menu_upload_site_icon() {
-		$page_hook = add_submenu_page(
-			null,
-			__( 'Site Icon Upload' ),
-			'',
-			'manage_options',
-			'wp-site-icon-upload',
-			array( $this, 'upload_site_icon_page' )
-		);
-
-		add_action( "admin_head-$page_hook", array( $this, 'upload_site_icon_head' ) );
-	}
-
-
-	/**
-	 * Add styles to the General Settings Screen
-	 */
-	public function add_general_options_styles() {
-		wp_enqueue_style( 'site-icon-admin' );
+		add_submenu_page( null, __( 'Site Icon Upload' ), '', 'manage_options', 'wporg-site-icon', array( $this, 'upload_site_icon_page' ) );
 	}
 
 	/**
-	 * Add Styles to the Upload UI Page
-	 *
+	 * Add scripts to admin settings pages.
 	 */
-	public function upload_site_icon_head() {
+	public function enqueue_scripts() {
 		if ( isset( $_REQUEST['step'] ) && $_REQUEST['step'] == 2 ) {
 			wp_enqueue_script( 'site-icon-crop', plugin_dir_url( __FILE__ ) . 'js/site-icon-crop.js', array( 'jquery', 'jcrop' ) );
 		}
 		wp_enqueue_style( 'site-icon-admin', plugin_dir_url( __FILE__ ) . 'css/site-icon-admin.css' );
 	}
 
+	/**
+	 * Adds Site Icon state to media states.
+	 *
+	 * @param array $media_states
+	 *
+	 * @return array
+	 */
 	public function add_media_state( $media_states ) {
 		if ( has_site_icon() && get_post()->ID == get_option( 'site_icon_id' ) ) {
 			$media_states[] = __( 'Site Icon' );
@@ -201,40 +197,35 @@ class WP_Site_Icon {
 	}
 
 	/**
-	 * Load on when the admin is initialized
+	 * Load on when the admin is initialized.
 	 */
-	public function admin_init() {
-		// register the settings
-		add_settings_section( 'wp-site-icon', '<span id="wporg-site-title">' . __( 'Site Icon' ) . '</span>', array( $this, 'settings_section' ), 'general' );
+	public function add_general_settings() {
+		add_settings_section( 'wporg-site-icon', '<span id="wporg-site-title">' . __( 'Site Icon' ) . '</span>', array( $this, 'settings_section' ), 'general' );
 
 		$field_title = has_site_icon() ? __( 'Manage Site Icon' ) : __( 'Add Site Icon' );
-		add_settings_field( 'wp-site-icon', $field_title, array( $this, 'settings_field' ), 'general', 'wp-site-icon' );
-
-		if ( isset( $_REQUEST['step'] ) && 3 == $_REQUEST['step'] ) {
-			$this->all_done_page();
-		}
+		add_settings_field( 'wporg-site-icon', $field_title, array( $this, 'settings_field' ), 'general', 'wporg-site-icon' );
 	}
 
 	/**
-	 * Checks for permission to delete the site_icon
+	 * Load on when the admin is initialized.
 	 */
-	public function delete_site_icon_hook() {
-		// Delete the site_icon
-		if ( isset( $GLOBALS['plugin_page'] ) && 'wp-site-icon-upload' == $GLOBALS['plugin_page'] ) {
-			if ( isset( $_GET['action'] )
-			     && 'remove' == $_GET['action']
-			     && isset( $_GET['_wpnonce'] )
-			     && wp_verify_nonce( $_GET['_wpnonce'], 'remove_site_icon' )
-			) {
+	public function add_upload_settings() {
+		add_settings_section( 'wporg-site-icon-upload', false, false, 'wporg-site-icon-upload' );
+		add_settings_field( 'wporg-site-icon-upload', __( 'Upload Image' ), array( $this, 'upload_field' ), 'wporg-site-icon-upload', 'wporg-site-icon-upload', array(
+			'label_for' => 'wporg-site-icon-upload',
+		) );
+	}
 
-				$site_icon_id = get_option( 'site_icon_id' );
+	/**
+	 * Removes site icon.
+	 */
+	public function remove_site_icon() {
+		check_admin_referer( 'remove_site_icon' );
 
-				// Delete the previous site icon
-				$this->delete_site_icon( $site_icon_id, true );
+		// Delete the previous site icon
+		$this->delete_site_icon( get_option( 'site_icon_id' ), true );
 
-				wp_safe_redirect( admin_url( 'options-general.php#wporg-site-icon' ) );
-			}
-		}
+		wp_safe_redirect( admin_url( 'options-general.php#wporg-site-icon' ) );
 	}
 
 	/**
@@ -245,10 +236,10 @@ class WP_Site_Icon {
 	}
 
 	public function settings_field() {
-		$upload_url = admin_url( 'options-general.php?page=wp-site-icon-upload' );
+		$upload_url = admin_url( 'options-general.php?page=wporg-site-icon' );
 
 		$update_url = esc_url( add_query_arg( array(
-			'page' => 'wp-site-icon-upload',
+			'page' => 'wporg-site-icon',
 			'step' => 2,
 			'_wpnonce' => wp_create_nonce( 'update-site-icon-2' ),
 		), admin_url( 'options-general.php' ) ) );
@@ -263,8 +254,8 @@ class WP_Site_Icon {
 			echo get_site_icon( null, 128 );
 
 			$remove_url = add_query_arg( array(
-				'page'   => 'wp-site-icon-upload',
-				'action' => 'remove',
+				'page'   => 'wporg-site-icon',
+				'action' => 'remove_site_icon',
 				'_wpnonce' => wp_create_nonce( 'remove_site_icon' ),
 			), admin_url( 'options-general.php' ) );
 
@@ -301,75 +292,55 @@ class WP_Site_Icon {
 	}
 
 	/**
-	 * Hidden Upload page for people that don't like modals
+	 * Uploading a site_icon is a 3 step process
+	 *
+	 * 1. Select the file to upload
+	 * 2. Crop the file
+	 * 3. Confirmation page
 	 */
-	public function upload_site_icon_page() { ?>
-		<div class="wrap">
-			<?php
-			/**
-			 * Uploading a site_icon is a 3 step process
-			 *
-			 * 1. Select the file to upload
-			 * 2. Crop the file
-			 * 3. Confirmation page
-			 */
-			$step = isset( $_REQUEST['step'] ) ? $_REQUEST['step'] : 1;
-			if ( $step > 1 ) {
-				check_admin_referer( 'update-site-icon-' . $step );
-			}
+	public function upload_site_icon_page() {
+		$step = isset( $_REQUEST['step'] ) ? $_REQUEST['step'] : 1;
 
-			switch ( $step ) {
-				case '1':
-					$this->select_page();
-					break;
+		switch ( $step ) {
+			case '1':
+				$this->select_page();
+				break;
 
-				case '2':
-					$this->crop_page();
-					break;
+			case '2':
+				check_admin_referer( 'update-site-icon-2' );
+				$this->crop_page();
+				break;
 
-				case '3':
-					$this->all_done_page();
-					break;
-
-				default:
-					wp_safe_redirect( admin_url( 'options-general.php#wporg-site-icon' ) );
-					exit;
-			}
-			?>
-		</div>
-	<?php
+			default:
+				wp_safe_redirect( admin_url( 'options-general.php#wporg-site-icon' ) );
+				exit;
+		}
 	}
 
 	/**
-	 * Select a file admin view
+	 * Displays the site_icon form to upload the image.
 	 */
 	public function select_page() {
-		// Display the site_icon form to upload the image
 		?>
 		<div class="wrap">
 			<h2><?php _e( 'Add Site Icon' ); ?></h2>
-			<table class="form-table">
-				<tr>
-					<th>
-						<label for="wp-site-icon">
-							<?php _e( 'Upload image' ); ?>
-						</label>
-					</th>
-					<td>
-						<form action="<?php echo esc_url( admin_url( 'options-general.php?page=wp-site-icon-upload' ) ); ?>" method="post" enctype="multipart/form-data">
-							<input name="step" value="2" type="hidden" />
-							<input name="wp-site-icon" type="file" />
-							<input name="submit" value="<?php esc_attr_e( 'Upload Image' ); ?>" type="submit" class="button button-primary" />
-							<p class="description">
-								<?php printf( __( 'The image needs to be exactly %spx in both width and height.' ), "<strong>$this->min_size</strong>" ); ?>
-							</p>
-							<?php wp_nonce_field( 'update-site-icon-2' ); ?>
-						</form>
-					</td>
-				</tr>
-			</table>
+			<?php do_settings_sections( 'wporg-site-icon-upload' ); ?>
 		</div>
-	<?php
+		<?php
+	}
+
+	public function upload_field() {
+		?>
+		<form action="<?php echo esc_url( admin_url( 'options-general.php?page=wporg-site-icon' ) ); ?>" method="post" enctype="multipart/form-data">
+			<input name="step" value="2" type="hidden" />
+			<input name="wporg-site-icon" type="file" />
+			<input name="submit" value="<?php esc_attr_e( 'Upload Image' ); ?>" type="submit" class="button button-primary" />
+			<p class="description">
+				<?php printf( __( 'The image needs to be exactly %spx in both width and height.' ), "<strong>$this->min_size</strong>" ); ?>
+			</p>
+			<?php wp_nonce_field( 'update-site-icon-2' ); ?>
+		</form>
+		<?php
 	}
 
 	/**
@@ -450,7 +421,7 @@ class WP_Site_Icon {
 		<div class="wrap">
 			<h2 class="site-icon-title"><?php esc_html_e( 'Site Icon' ); ?></h2>
 			<div class="site-icon-crop-shell">
-				<form action="" method="post" enctype="multipart/form-data">
+				<form action="options-general.php?page=wporg-site-icon" method="post" enctype="multipart/form-data">
 					<p class="site-icon-submit-form">
 						<input name="submit" value="<?php esc_attr_e( 'Crop Image' ); ?>" type="submit" class="button button-primary button-large"/><?php printf( __( ' or <a href="%s">Cancel</a> and go back to the settings.' ), esc_url( admin_url( 'options-general.php' ) ) ); ?>
 					</p>
@@ -492,10 +463,13 @@ class WP_Site_Icon {
 	}
 
 	/**
-	 * All done page admin view
-	 *
+	 * @return void|WP_Error|WP_Image_Editor
 	 */
-	public function all_done_page() {
+	public function save_site_icon() {
+		if ( empty( $_REQUEST['step'] ) || 3 != $_REQUEST['step'] ) {
+			return;
+		}
+		check_admin_referer( 'update-site-icon-3' );
 
 		$temp_image_data = get_option( 'site_icon_temp_data' );
 		if ( ! $temp_image_data ) {
@@ -692,7 +666,7 @@ class WP_Site_Icon {
 	 * @since 3.4.0
 	 */
 	public function handle_upload() {
-		$uploaded_file = $_FILES['wp-site-icon'];
+		$uploaded_file = $_FILES['wporg-site-icon'];
 		$file_type   = wp_check_filetype_and_ext( $uploaded_file['tmp_name'], $uploaded_file['name'] );
 		if ( ! wp_match_mime_types( 'image', $file_type['type'] ) ) {
 			wp_die( __( 'The uploaded file is not a valid image. Please try again.' ) );
@@ -816,7 +790,7 @@ class WP_Site_Icon {
 	 * @return array
 	 */
 	public function intermediate_image_sizes( $sizes = array() ) {
-		/** This filter is documented in modules/site-icon/wp-site-icon.php */
+		/** This filter is documented in modules/site-icon/wporg-site-icon.php */
 		$this->site_icon_sizes = apply_filters( 'site_icon_image_sizes', $this->site_icon_sizes );
 		foreach ( $this->site_icon_sizes as $size ) {
 			$sizes[] = 'site_icon-' . $size;
