@@ -30,16 +30,6 @@ class WP_Site_Icon {
 	/**
 	 * @var array
 	 */
-	public $accepted_file_types = array(
-		'image/jpg',
-		'image/jpeg',
-		'image/gif',
-		'image/png',
-	);
-
-	/**
-	 * @var array
-	 */
 	public $site_icon_sizes = array(
 		/**
 		 * Square, medium sized tiles for IE11+.
@@ -73,9 +63,8 @@ class WP_Site_Icon {
 		add_action( 'load-options-general.php',           array( $this, 'add_general_settings' ) );
 		add_action( 'load-settings_page_wporg-site-icon', array( $this, 'add_upload_settings' ) );
 		add_action( 'load-settings_page_wporg-site-icon', array( $this, 'save_site_icon' ) );
-		add_action( 'admin_action_remove_site_icon',      array( $this, 'remove_site_icon' ) );
+		add_action( 'load-settings_page_wporg-site-icon', array( $this, 'remove_site_icon' ) );
 
-		add_action( 'admin_print_scripts-options-general.php',           array( $this, 'enqueue_scripts' ) );
 		add_action( 'admin_print_scripts-settings_page_wporg-site-icon', array( $this, 'enqueue_scripts' ) );
 
 		// Add the favicon to the front end and backend.
@@ -168,17 +157,17 @@ class WP_Site_Icon {
 	 * There is no need to access it directly.
 	 */
 	public function admin_menu_upload_site_icon() {
-		add_submenu_page( null, __( 'Site Icon Upload' ), '', 'manage_options', 'wporg-site-icon', array( $this, 'upload_site_icon_page' ) );
+		add_submenu_page( null, __( 'Site Icon Upload' ), __( 'Site Icon Upload' ), 'manage_options', 'wporg-site-icon', array( $this, 'upload_site_icon_page' ) );
 	}
 
 	/**
 	 * Add scripts to admin settings pages.
 	 */
 	public function enqueue_scripts() {
-		if ( isset( $_REQUEST['step'] ) && $_REQUEST['step'] == 2 ) {
-			wp_enqueue_script( 'site-icon-crop', plugin_dir_url( __FILE__ ) . 'js/site-icon-crop.js', array( 'jquery', 'jcrop' ) );
-		}
+		wp_enqueue_style( 'jcrop' );
 		wp_enqueue_style( 'site-icon-admin', plugin_dir_url( __FILE__ ) . 'css/site-icon-admin.css' );
+
+		wp_enqueue_script( 'site-icon-crop', plugin_dir_url( __FILE__ ) . 'js/site-icon-crop.js', array( 'jquery', 'jcrop' ), false, true );
 	}
 
 	/**
@@ -200,7 +189,7 @@ class WP_Site_Icon {
 	 * Load on when the admin is initialized.
 	 */
 	public function add_general_settings() {
-		add_settings_section( 'wporg-site-icon', '<span id="wporg-site-title">' . __( 'Site Icon' ) . '</span>', array( $this, 'settings_section' ), 'general' );
+		add_settings_section( 'wporg-site-icon', '<span id="wporg-site-icon">' . __( 'Site Icon' ) . '</span>', array( $this, 'settings_section' ), 'general' );
 
 		$field_title = has_site_icon() ? __( 'Manage Site Icon' ) : __( 'Add Site Icon' );
 		add_settings_field( 'wporg-site-icon', $field_title, array( $this, 'settings_field' ), 'general', 'wporg-site-icon' );
@@ -220,10 +209,17 @@ class WP_Site_Icon {
 	 * Removes site icon.
 	 */
 	public function remove_site_icon() {
+		if ( empty( $_REQUEST['action'] ) || 'remove_site_icon' !== $_REQUEST['action'] ) {
+			return;
+		}
 		check_admin_referer( 'remove_site_icon' );
 
-		// Delete the previous site icon
-		$this->delete_site_icon( get_option( 'site_icon_id' ), true );
+		// We add the filter to make sure that we also delete all the added images
+		add_filter( 'intermediate_image_sizes', array( $this, 'intermediate_image_sizes' ) );
+		wp_delete_attachment( get_option( 'site_icon_id' ), true );
+		remove_filter( 'intermediate_image_sizes', array( $this, 'intermediate_image_sizes' ) );
+
+		delete_option( 'site_icon_id' );
 
 		wp_safe_redirect( admin_url( 'options-general.php#wporg-site-icon' ) );
 	}
@@ -241,17 +237,13 @@ class WP_Site_Icon {
 		$update_url = esc_url( add_query_arg( array(
 			'page' => 'wporg-site-icon',
 			'step' => 2,
-			'_wpnonce' => wp_create_nonce( 'update-site-icon-2' ),
-		), admin_url( 'options-general.php' ) ) );
-
-		// Lets delete the temp data that we might he holding on to.
-		$this->delete_temporay_data();
+		), wp_nonce_url( admin_url( 'options-general.php' ), 'update-site-icon-2' ) ) );
 
 		wp_enqueue_media();
 		wp_enqueue_script( 'custom-header' );
 
 		if ( has_site_icon() ) :
-			echo get_site_icon( null, 128 );
+			echo get_site_icon( null, 180 );
 
 			$remove_url = add_query_arg( array(
 				'page'   => 'wporg-site-icon',
@@ -272,9 +264,7 @@ class WP_Site_Icon {
 				<a href="<?php echo esc_url( $upload_url ); ?>"><?php _e( 'Add a Site Icon' ); ?></a>
 				<a href="<?php echo esc_url( $remove_url ); ?>" id="site-icon-remove"><?php esc_html_e( 'Remove Site Icon' ); ?></a>
 			</p>
-
 			<?php
-
 		else :
 
 			// Display the site_icon form to upload the image
@@ -329,6 +319,9 @@ class WP_Site_Icon {
 		<?php
 	}
 
+	/**
+	 * Settings field for file upload.
+	 */
 	public function upload_field() {
 		?>
 		<form action="<?php echo esc_url( admin_url( 'options-general.php?page=wporg-site-icon' ) ); ?>" method="post" enctype="multipart/form-data">
@@ -344,7 +337,7 @@ class WP_Site_Icon {
 	}
 
 	/**
-	 * Crop a the image admin view
+	 * Crop a the image admin view.
 	 */
 	public function crop_page() {
 		if ( isset( $_GET['file'] ) ) {
@@ -352,85 +345,62 @@ class WP_Site_Icon {
 			$file = get_attached_file( $attachment_id, true );
 			$url  = wp_get_attachment_image_src( $attachment_id, 'full' );
 			$url  = $url[0];
-		} elseif ( isset( $_FILES ) ) {
+		} else {
 			$upload = $this->handle_upload();
 			$attachment_id = $upload['attachment_id'];
 			$file = $upload['file'];
 			$url  = $upload['url'];
 		}
 
-
-		// Lets try to crop the image into smaller files.
-		// We will be doing this later so it is better if it fails now.
-		$image_edit = wp_get_image_editor( $file );
-		if ( is_wp_error( $image_edit ) ) {
-			// this should contain the error message from WP_Image_Editor
-			unlink( $file ); // lets delete the file since we are not going to be using it
-			return $image_edit;
-		}
-
 		$image_size = getimagesize( $file );
 
-		if ( $image_size[0] < $this->min_size || $image_size[1] < $this->min_size ) {
-			if ( $image_size[0] < $this->min_size ) {
-				?><div id="message" class="updated error below-h2"><p><?php printf( __( 'The selected image is smaller than %upx in width.' ), $this->min_size ); ?></p></div><?php
-				// back to step one
-				$_POST = array();
-				$this->delete_temporay_data();
-				$this->select_page();
-				return;
-			}
+		if ( $image_size[0] < $this->min_size ) {
+			add_settings_error( 'wporg-site-icon', 'too-small', sprintf( __( 'The selected image is smaller than %upx in width.' ), $this->min_size ) );
 
-			if ( $image_size[1] < $this->min_size ) {
-				?><div id="message" class="updated error below-h2"><p><?php printf( __( 'The selected image is smaller than %upx in height.' ), $this->min_size ); ?></p></div><?php
-				// back to step one
-				$_POST = array();
-				$this->delete_temporay_data();
-				$this->select_page();
-				return;
-			}
+			// back to step one
+			$_POST = array();
+			$this->select_page();
+
+			return;
 		}
 
-		// Let's resize the image so that the user can easier crop a image that in the admin view
-		$image_edit->resize( $this->page_crop, $this->page_crop, false );
+		if ( $image_size[1] < $this->min_size ) {
+			add_settings_error( 'wporg-site-icon', 'too-small', sprintf( __( 'The selected image is smaller than %upx in height.' ), $this->min_size ) );
 
-		$resized_filename = $image_edit->generate_filename( 'temp', null, null );
-		$image_edit->save( $resized_filename );
-		$resized_file_type = wp_check_filetype( $resized_filename );
+			// back to step one
+			$_POST = array();
+			$this->select_page();
 
-		$resized_attach_id = $this->save_attachment(
-			__( 'Temporary Resized Image for Blog Image' ),
-			$resized_filename,
-			$resized_file_type['type'],
-			false
-		);
+			return;
+		}
 
-		$resized_image_size = getimagesize( $resized_filename );
-		// Save all of this into the the database for that we can work with it later.
-		update_option( 'site_icon_temp_data', array(
-			'large_image_attachment_id'  => $attachment_id,
-			'large_image_data'           => $image_size,
-			'resized_image_attacment_id' => $resized_attach_id,
-			'resized_image_data'         => $resized_image_size,
-		) );
+		// Let's resize the image so that the user can easier crop a image that in the admin view.
+		$cropped = wp_crop_image( $attachment_id, 0, 0, 0, 0, $this->page_crop, 0 );
+		if ( ! $cropped || is_wp_error( $cropped ) ) {
+			wp_die( __( 'Image could not be processed. Please go back and try again.' ), __( 'Image Processing Error' ) );
+		}
+		$cropped_size = getimagesize( $cropped );
+		$crop_ratio   = $image_size[0] / $cropped_size[0];
+		wp_delete_file( $cropped );
 
-		// lets make sure that the Javascript ia also loaded
-		wp_localize_script( 'site-icon-crop', 'wpSiteIconCropData', $this->initial_crop_data() );
+		wp_localize_script( 'site-icon-crop', 'wpSiteIconCropData', $this->initial_crop_data( $crop_ratio, $cropped_size ) );
 		?>
 
 		<div class="wrap">
 			<h2 class="site-icon-title"><?php esc_html_e( 'Site Icon' ); ?></h2>
+			<?php settings_errors( 'wporg-site-icon' ); ?>
+
 			<div class="site-icon-crop-shell">
 				<form action="options-general.php?page=wporg-site-icon" method="post" enctype="multipart/form-data">
-					<p class="site-icon-submit-form">
-						<input name="submit" value="<?php esc_attr_e( 'Crop Image' ); ?>" type="submit" class="button button-primary button-large"/><?php printf( __( ' or <a href="%s">Cancel</a> and go back to the settings.' ), esc_url( admin_url( 'options-general.php' ) ) ); ?>
+					<p>
+						<?php submit_button( __( 'Crop and Publish' ), 'primary', 'submit', false ); ?>
+						<span class="hide-if-no-js description"><?php _e('Choose the part of the image you want to use as your site icon.'); ?></span>
+						<p class="hide-if-js description"><strong><?php _e( 'You need Javascript to choose a part of the image.'); ?></strong></p>
 					</p>
 
 					<div class="site-icon-crop-preview-shell">
 						<h3><?php esc_html_e( 'Preview' ); ?></h3>
-
 						<strong><?php esc_html_e( 'As your favicon' ); ?></strong>
-
 						<div class="site-icon-crop-favicon-preview-shell">
 							<img src="<?php echo esc_url( plugin_dir_url( __FILE__ ) . 'browser.png' ); ?>" class="site-icon-browser-preview" width="172" height="79" alt="<?php esc_attr_e( 'Browser Chrome' ); ?>"/>
 
@@ -441,19 +411,22 @@ class WP_Site_Icon {
 						</div>
 
 						<strong><?php esc_html_e( 'As a mobile icon' ); ?></strong>
-
 						<div class="site-icon-crop-preview-homeicon">
 							<img src="<?php echo esc_url( $url ); ?>" id="preview-homeicon" alt="<?php esc_attr_e( 'Preview Home Icon' ); ?>"/>
 						</div>
 					</div>
-					<img src="<?php echo esc_url( $url ); ?>" id="crop-image" class="site-icon-crop-image" width="<?php echo esc_attr( $resized_image_size[0] ); ?>" height="<?php echo esc_attr( $resized_image_size[1] ); ?>" alt="<?php esc_attr_e( 'Image to be cropped' ); ?>"/>
+					<img src="<?php echo esc_url( $url ); ?>" id="crop-image" class="site-icon-crop-image" width="<?php echo esc_attr( $cropped_size[0] ); ?>" height="<?php echo esc_attr( $cropped_size[1] ); ?>" alt="<?php esc_attr_e( 'Image to be cropped' ); ?>"/>
 
-					<input name="step" value="3" type="hidden"/>
-					<input type="hidden" id="crop-x" name="crop-x"/>
-					<input type="hidden" id="crop-y" name="crop-y"/>
-					<input type="hidden" id="crop-width" name="crop-w"/>
-					<input type="hidden" id="crop-height" name="crop-h"/>
-
+					<input type="hidden" name="step" value="3" />
+					<input type="hidden" name="attachment_id" value="<?php echo esc_attr( $attachment_id ); ?>" />
+					<input type="hidden" name="crop_ratio" value="<?php echo esc_attr( $crop_ratio ); ?>" />
+					<input type="hidden" id="crop-x" name="crop-x" />
+					<input type="hidden" id="crop-y" name="crop-y" />
+					<input type="hidden" id="crop-width" name="crop-w" />
+					<input type="hidden" id="crop-height" name="crop-h" />
+					<?php if ( empty( $_POST ) && isset( $_GET['file'] ) ) : ?>
+					<input type="hidden" name="create-new-attachment" value="true" />
+					<?php endif; ?>
 					<?php wp_nonce_field( 'update-site-icon-3' ); ?>
 
 				</form>
@@ -471,55 +444,37 @@ class WP_Site_Icon {
 		}
 		check_admin_referer( 'update-site-icon-3' );
 
-		$temp_image_data = get_option( 'site_icon_temp_data' );
-		if ( ! $temp_image_data ) {
-			// start again
-			$this->select_page();
+		$attachment_id = absint( $_POST['attachment_id'] );
 
-			return;
-		}
-		$crop_ration = $temp_image_data['large_image_data'][0] / $temp_image_data['resized_image_data'][0]; // always bigger then 1
+		$crop_ratio = (float) $_POST['crop_ratio'];
+		$crop_data = $this->convert_coordinates_from_resized_to_full( $_POST['crop-x'], $_POST['crop-y'], $_POST['crop-w'], $_POST['crop-h'], $crop_ratio );
 
-		$crop_data = $this->convert_coordinates_from_resized_to_full( $_POST['crop-x'], $_POST['crop-y'], $_POST['crop-w'], $_POST['crop-h'], $crop_ration );
-
-		$image_edit = wp_get_image_editor( _load_image_to_edit_path( $temp_image_data['large_image_attachment_id'] ) );
-
-		if ( is_wp_error( $image_edit ) ) {
-			return $image_edit;
+		// TODO
+		if ( empty( $_POST['skip-cropping'] ) ) {
+			$cropped = wp_crop_image( $attachment_id, $crop_data['crop_x'], $crop_data['crop_y'], $crop_data['crop_width'], $crop_data['crop_height'], $this->min_size, $this->min_size );
+		} elseif ( ! empty( $_POST['create-new-attachment'] ) ) {
+			$cropped = _copy_image_file( $attachment_id );
+		} else {
+			$cropped = get_attached_file( $attachment_id );
 		}
 
-		// Delete the previous site_icon
-		$previous_site_icon_id = get_option( 'site_icon_id' );
-		$this->delete_site_icon( $previous_site_icon_id );
-
-		// crop the image
-		$image_edit->crop( $crop_data['crop_x'], $crop_data['crop_y'], $crop_data['crop_width'], $crop_data['crop_height'], $this->min_size, $this->min_size );
-
-		$dir = wp_upload_dir();
-
-		$site_icon_filename = $image_edit->generate_filename( dechex( time() ) . 'wp_site_icon', null, 'png' );
-
-		// If the attachment is a URL, then change it to a local file name to allow us to save and then upload the cropped image
-		$check_url = parse_url( $site_icon_filename );
-		if ( isset( $check_url['host'] ) ) {
-			$upload_dir         = wp_upload_dir();
-			$site_icon_filename = $upload_dir['path'] . '/' . basename( $site_icon_filename );
+		if ( ! $cropped || is_wp_error( $cropped ) ) {
+			wp_die( __( 'Image could not be processed. Please go back and try again.' ), __( 'Image Processing Error' ) );
 		}
 
-		$image_edit->save( $site_icon_filename );
+		$object = $this->create_attachment_object( $cropped, $attachment_id );
 
-		add_filter( 'intermediate_image_sizes_advanced', array( $this, 'additional_sizes' ) );
+		if ( ! empty( $_POST['create-new-attachment'] ) ) {
+			unset( $object['ID'] );
+		}
 
-		$site_icon_id = $this->save_attachment(
-			__( 'Large Blog Image' ),
-			$site_icon_filename,
-			'image/png'
-		);
-
-		remove_filter( 'intermediate_image_sizes_advanced', array( $this, 'additional_sizes' ) );
+		// Update the attachment
+		add_filter( 'intermediate_image_sizes_advanced', array( $this, 'only_thumbnail_size' ) );
+		$attachment_id = $this->insert_attachment( $object, $cropped );
+		remove_filter( 'intermediate_image_sizes_advanced', array( $this, 'only_thumbnail_size' ) );
 
 		// Save the site_icon data into option
-		update_option( 'site_icon_id', $site_icon_id );
+		update_option( 'site_icon_id', $attachment_id );
 
 		wp_safe_redirect( admin_url( 'options-general.php#wporg-site-icon' ) );
 		exit;
@@ -532,16 +487,12 @@ class WP_Site_Icon {
 	 *
 	 * @return array
 	 */
-	public function initial_crop_data() {
+	public function initial_crop_data( $ratio, $cropped_size ) {
 		$init_x = $init_y = $init_size = 0;
 
-		$crop_data = get_option( 'site_icon_temp_data' );
-		$large_width    = $crop_data['large_image_data'][0];
-		$resized_width  = $crop_data['resized_image_data'][0];
-		$resized_height = $crop_data['resized_image_data'][1];
-
-		$ration        = $large_width / $resized_width;
-		$min_crop_size = ( $this->min_size / $ration );
+		$min_crop_size  = ( $this->min_size / $ratio );
+		$resized_width  = $cropped_size[0];
+		$resized_height = $cropped_size[1];
 
 		// Landscape format ( width > height )
 		if ( $resized_width > $resized_height ) {
@@ -564,35 +515,8 @@ class WP_Site_Icon {
 			'init_x'    => $init_x,
 			'init_y'    => $init_y,
 			'init_size' => $init_size,
-			'min_size'  => $min_crop_size
+			'min_size'  => $min_crop_size,
 		);
-	}
-
-	/**
-	 * Delete the temporary created data and attachments
-	 *
-	 * @return bool True, if option is successfully deleted. False on failure.
-	 */
-	public function delete_temporay_data() {
-		// This should automatically delete the temporary files as well
-		return delete_option( 'site_icon_temp_data' );
-	}
-
-	/**
-	 * Function gets fired when delete_option( 'site_icon_temp_data' ) is run.
-	 *
-	 * @param string $option
-	 */
-	public function delete_temp_data( $option ) {
-		if ( 'site_icon_temp_data' !== $option ) {
-			return;
-		}
-
-		remove_action( 'delete_attachment', array( $this, 'delete_attachment_data' ), 10, 1 );
-
-		$temp_image_data = get_option( 'site_icon_temp_data' );
-		wp_delete_attachment( $temp_image_data['large_image_attachment_id'], true );
-		wp_delete_attachment( $temp_image_data['resized_image_attacment_id'], true );
 	}
 
 	/**
@@ -617,29 +541,12 @@ class WP_Site_Icon {
 	 */
 	public function delete_attachment_images( $check, $post_id, $meta_key, $single ) {
 		$site_icon_id = get_option( 'site_icon_id' );
+
 		if ( $post_id == $site_icon_id && '_wp_attachment_backup_sizes' == $meta_key && $single ) {
 			add_filter( 'intermediate_image_sizes', array( $this, 'intermediate_image_sizes' ) );
 		}
 
 		return $check;
-	}
-
-	/**
-	 * Delete the site icon and all the attached data.
-	 *
-	 * @param $id
-	 *
-	 * @return mixed
-	 */
-	public function delete_site_icon( $id ) {
-		// We add the filter to make sure that we also delete all the added images
-		add_filter( 'intermediate_image_sizes', array( $this, 'intermediate_image_sizes' ) );
-		wp_delete_attachment( $id, true );
-		remove_filter( 'intermediate_image_sizes', array( $this, 'intermediate_image_sizes' ) );
-		// for good measure also
-		$this->delete_temporay_data();
-
-		return delete_option( 'site_icon_id' );
 	}
 
 	/**
@@ -699,43 +606,56 @@ class WP_Site_Icon {
 	}
 
 	/**
-	 * Save site icon files to Media Library
+	 * Create an attachment 'object'.
 	 *
-	 * @param  string $title
-	 * @param  string $file
-	 * @param  string $file_type
-	 * @param  boolean $generate_meta
+	 * @param string $cropped              Cropped image URL.
+	 * @param int    $parent_attachment_id Attachment ID of parent image.
 	 *
-	 * @return int        $attactment_id
+	 * @return array Attachment object.
 	 */
-	public function save_attachment( $title, $file, $file_type, $generate_meta = true ) {
-		$filename = _wp_relative_upload_path( $file );
+	public function create_attachment_object( $cropped, $parent_attachment_id ) {
+		$parent     = get_post( $parent_attachment_id );
+		$parent_url = $parent->guid;
+		$url        = str_replace( basename( $parent_url ), basename( $cropped ), $parent_url );
 
-		$wp_upload_dir = wp_upload_dir();
-		$attachment    = array(
-			'guid'           => $wp_upload_dir['url'] . '/' . basename( $filename ),
-			'post_mime_type' => $file_type,
-			'post_title'     => $title,
-			'post_content'   => '',
-			'post_status'    => 'inherit'
+		$size       = @getimagesize( $cropped );
+		$image_type = ( $size ) ? $size['mime'] : 'image/jpeg';
+
+		$object = array(
+			'ID'             => $parent_attachment_id,
+			'post_title'     => basename( $cropped ),
+			'post_content'   => $url,
+			'post_mime_type' => $image_type,
+			'guid'           => $url,
+			'context'        => 'site-icon'
 		);
-		$attachment_id = wp_insert_attachment( $attachment, $filename );
 
-		if ( ! function_exists( 'wp_generate_attachment_metadata' ) ) {
-			// Make sure that this file is included, as wp_generate_attachment_metadata() depends on it.
-			require_once( ABSPATH . 'wp-admin/includes/image.php' );
-		}
-		if ( ! $generate_meta ) {
-			add_filter( 'intermediate_image_sizes_advanced', array( $this, 'only_thumbnail_size' ) );
-		}
+		return $object;
+	}
 
-		// Generate the metadata for the attachment, and update the database record.
-		$attach_data = wp_generate_attachment_metadata( $attachment_id, $file );
-		wp_update_attachment_metadata( $attachment_id, $attach_data );
+	/**
+	 * Insert an attachment and its metadata.
+	 *
+	 * @param array $object Attachment object.
+	 * @param string $cropped Cropped image URL.
+	 *
+	 * @return int Attachment ID.
+	 */
+	public function insert_attachment( $object, $cropped ) {
+		$attachment_id = wp_insert_attachment( $object, $cropped );
+		$metadata      = wp_generate_attachment_metadata( $attachment_id, $cropped );
 
-		if ( ! $generate_meta ) {
-			remove_filter( 'intermediate_image_sizes_advanced', array( $this, 'only_thumbnail_size' ) );
-		}
+		/**
+		 * Filter the header image attachment metadata.
+		 *
+		 * @since 3.9.0
+		 *
+		 * @see wp_generate_attachment_metadata()
+		 *
+		 * @param array $metadata Attachment metadata.
+		 */
+		$metadata = apply_filters( 'wp_site_icon_attachment_metadata', $metadata );
+		wp_update_attachment_metadata( $attachment_id, $metadata );
 
 		return $attachment_id;
 	}

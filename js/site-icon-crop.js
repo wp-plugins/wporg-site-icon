@@ -1,8 +1,7 @@
 /* global wpSiteIconCropDatas, jQuery */
 (function($) {
-	var jcrop_api, Site_Icon_Crop;
-	jcrop_api = {};
-	Site_Icon_Crop = {
+	var jcrop_api = {},
+		Site_Icon_Crop = {
 
 		updateCoords : function ( coords ) {
 
