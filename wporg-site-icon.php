@@ -3,7 +3,7 @@
 Plugin Name: WP.org Site Icon
 Plugin URL: http://wordpress.org/
 Description: Add a site icon for your website.
-Version: 3
+Version: 4
 License: GNU General Public License v2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 Author: wordpressdotorg
@@ -252,7 +252,7 @@ class WP_Site_Icon {
 			?>
 			<p class="hide-if-no-js">
 				<label class="screen-reader-text" for="choose-from-library-link"><?php _e( 'Choose an image from your media library:' ); ?></label>
-				<button id="choose-from-library-link" class="button"
+				<button type="button" id="choose-from-library-link" class="button"
 				        data-update-link="<?php echo esc_attr( $update_url ); ?>"
 				        data-choose="<?php esc_attr_e( 'Choose a Site Icon' ); ?>"
 				        data-update="<?php esc_attr_e( 'Set as Site Icon' ); ?>"><?php _e( 'Update Site Icon' ); ?></button>
@@ -269,7 +269,7 @@ class WP_Site_Icon {
 			?>
 			<p class="hide-if-no-js">
 				<label class="screen-reader-text" for="choose-from-library-link"><?php _e( 'Choose an image from your media library:' ); ?></label>
-				<button id="choose-from-library-link" class="button"
+				<button type="button" id="choose-from-library-link" class="button"
 				        data-update-link="<?php echo esc_attr( $update_url ); ?>"
 				        data-choose="<?php esc_attr_e( 'Choose a Site Icon' ); ?>"
 				        data-update="<?php esc_attr_e( 'Set as Site Icon' ); ?>"><?php _e( 'Choose Image' ); ?></button>
@@ -312,6 +312,7 @@ class WP_Site_Icon {
 		?>
 		<div class="wrap">
 			<h2><?php _e( 'Add Site Icon' ); ?></h2>
+			<?php settings_errors( 'wporg-site-icon' ); ?>
 			<?php do_settings_sections( 'wporg-site-icon-upload' ); ?>
 		</div>
 		<?php
@@ -321,8 +322,23 @@ class WP_Site_Icon {
 	 * Settings field for file upload.
 	 */
 	public function upload_field() {
+		wp_enqueue_media();
+		wp_enqueue_script( 'custom-header' );
+		wp_dequeue_script( 'site-icon-crop' );
+
+		$update_url = esc_url( add_query_arg( array(
+			'page' => 'wporg-site-icon',
+			'step' => 2,
+		), wp_nonce_url( admin_url( 'options-general.php' ), 'update-site-icon-2' ) ) );
 		?>
-		<form action="<?php echo esc_url( admin_url( 'options-general.php?page=wporg-site-icon' ) ); ?>" method="post" enctype="multipart/form-data">
+		<p class="hide-if-no-js">
+			<label class="screen-reader-text" for="choose-from-library-link"><?php _e( 'Choose an image from your media library:' ); ?></label>
+			<button type="button" id="choose-from-library-link" class="button"
+			        data-update-link="<?php echo esc_attr( $update_url ); ?>"
+			        data-choose="<?php esc_attr_e( 'Choose a Site Icon' ); ?>"
+			        data-update="<?php esc_attr_e( 'Set as Site Icon' ); ?>"><?php _e( 'Choose Image' ); ?></button>
+		</p>
+		<form class="hide-if-js" action="<?php echo esc_url( admin_url( 'options-general.php?page=wporg-site-icon' ) ); ?>" method="post" enctype="multipart/form-data">
 			<input name="step" value="2" type="hidden" />
 			<input name="wporg-site-icon" type="file" />
 			<input name="submit" value="<?php esc_attr_e( 'Upload Image' ); ?>" type="submit" class="button button-primary" />
