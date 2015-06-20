@@ -60,12 +60,8 @@ class WP_Site_Icon {
 		add_action( 'admin_menu',           array( $this, 'admin_menu_upload_site_icon' ) );
 		add_filter( 'display_media_states', array( $this, 'add_media_state' ) );
 
-		add_action( 'load-options-general.php',           array( $this, 'add_general_settings' ) );
-		add_action( 'load-settings_page_wporg-site-icon', array( $this, 'add_upload_settings' ) );
-		add_action( 'load-settings_page_wporg-site-icon', array( $this, 'save_site_icon' ) );
-		add_action( 'load-settings_page_wporg-site-icon', array( $this, 'remove_site_icon' ) );
-
-		add_action( 'admin_print_scripts-settings_page_wporg-site-icon', array( $this, 'enqueue_scripts' ) );
+		add_action( 'admin_action_set_site_icon', array( $this, 'set_site_icon' ) );
+		add_action( 'admin_action_remove_site_icon', array( $this, 'remove_site_icon' ) );
 
 		// Add the favicon to the front end and backend.
 		add_action( 'wp_head',    array( $this, 'add_meta' ) );
@@ -87,7 +83,7 @@ class WP_Site_Icon {
 		$meta_tags = array(
 			sprintf( '<link rel="icon" href="%s" sizes="32x32" />', esc_url( site_icon_url( null, 32 ) ) ),
 			sprintf( '<link rel="apple-touch-icon-precomposed" href="%s">', esc_url( site_icon_url( null, 180 ) ) ),
-			sprintf( '<meta name="msapplication-TileImage" content="%s">', esc_url( site_icon_url( null, 150 ) ) ),
+			sprintf( '<meta name="msapplication-TileImage" content="%s">', esc_url( site_icon_url( null, 270 ) ) ),
 		);
 
 		/**
@@ -155,7 +151,12 @@ class WP_Site_Icon {
 	 * There is no need to access it directly.
 	 */
 	public function admin_menu_upload_site_icon() {
-		add_submenu_page( null, __( 'Site Icon Upload' ), __( 'Site Icon Upload' ), 'manage_options', 'wporg-site-icon', array( $this, 'upload_site_icon_page' ) );
+		$hook = add_submenu_page( null, __( 'Site Icon' ), __( 'Site Icon' ), 'manage_options', 'wporg-site-icon', array( $this, 'upload_site_icon_page' ) );
+
+		add_action( "load-$hook", array( $this, 'add_upload_settings' ) );
+		add_action( "admin_print_scripts-$hook", array( $this, 'enqueue_scripts' ) );
+
+		add_action( 'load-options-general.php', array( $this, 'add_general_settings' ) );
 	}
 
 	/**
@@ -207,9 +208,6 @@ class WP_Site_Icon {
 	 * Removes site icon.
 	 */
 	public function remove_site_icon() {
-		if ( empty( $_REQUEST['action'] ) || 'remove_site_icon' !== $_REQUEST['action'] ) {
-			return;
-		}
 		check_admin_referer( 'remove_site_icon' );
 
 		// We add the filter to make sure that we also delete all the added images
@@ -219,7 +217,7 @@ class WP_Site_Icon {
 
 		delete_option( 'site_icon_id' );
 
-		wp_safe_redirect( admin_url( 'options-general.php#wporg-site-icon' ) );
+		add_settings_error( 'wporg-site-icon', 'icon-removed', __( 'Site Icon removed.' ), 'updated' );
 	}
 
 	/**
@@ -244,7 +242,6 @@ class WP_Site_Icon {
 			echo get_site_icon( null, 180 );
 
 			$remove_url = add_query_arg( array(
-				'page'   => 'wporg-site-icon',
 				'action' => 'remove_site_icon',
 				'_wpnonce' => wp_create_nonce( 'remove_site_icon' ),
 			), admin_url( 'options-general.php' ) );
@@ -405,9 +402,8 @@ class WP_Site_Icon {
 			<?php settings_errors( 'wporg-site-icon' ); ?>
 
 			<div class="site-icon-crop-shell">
-				<form action="options-general.php?page=wporg-site-icon" method="post" enctype="multipart/form-data">
+				<form action="options-general.php" method="post" enctype="multipart/form-data">
 					<p>
-						<?php submit_button( __( 'Crop and Publish' ), 'primary', 'submit', false ); ?>
 						<span class="hide-if-no-js description"><?php _e('Choose the part of the image you want to use as your site icon.'); ?></span>
 						<p class="hide-if-js description"><strong><?php _e( 'You need Javascript to choose a part of the image.'); ?></strong></p>
 					</p>
@@ -431,7 +427,7 @@ class WP_Site_Icon {
 					</div>
 					<img src="<?php echo esc_url( $url ); ?>" id="crop-image" class="site-icon-crop-image" width="<?php echo esc_attr( $cropped_size[0] ); ?>" height="<?php echo esc_attr( $cropped_size[1] ); ?>" alt="<?php esc_attr_e( 'Image to be cropped' ); ?>"/>
 
-					<input type="hidden" name="step" value="3" />
+					<input type="hidden" name="action" value="set_site_icon" />
 					<input type="hidden" name="attachment_id" value="<?php echo esc_attr( $attachment_id ); ?>" />
 					<input type="hidden" name="crop_ratio" value="<?php echo esc_attr( $crop_ratio ); ?>" />
 					<input type="hidden" id="crop-x" name="crop-x" />
@@ -441,8 +437,12 @@ class WP_Site_Icon {
 					<?php if ( empty( $_POST ) && isset( $_GET['file'] ) ) : ?>
 					<input type="hidden" name="create-new-attachment" value="true" />
 					<?php endif; ?>
-					<?php wp_nonce_field( 'update-site-icon-3' ); ?>
+					<?php wp_nonce_field( 'set-site-icon' ); ?>
 
+					<p class="submit">
+						<?php submit_button( __( 'Crop and Publish' ), 'primary', 'submit', false ); ?>
+						<a class="button secondary" href="options-general.php?action=site_icon_cancel"><?php _e( 'Cancel' ); ?></a>
+					</p>
 				</form>
 			</div>
 		</div>
@@ -452,11 +452,8 @@ class WP_Site_Icon {
 	/**
 	 * @return void|WP_Error|WP_Image_Editor
 	 */
-	public function save_site_icon() {
-		if ( empty( $_REQUEST['step'] ) || 3 != $_REQUEST['step'] ) {
-			return;
-		}
-		check_admin_referer( 'update-site-icon-3' );
+	public function set_site_icon() {
+		check_admin_referer( 'set-site-icon' );
 
 		$attachment_id = absint( $_POST['attachment_id'] );
 
@@ -490,8 +487,7 @@ class WP_Site_Icon {
 		// Save the site_icon data into option
 		update_option( 'site_icon_id', $attachment_id );
 
-		wp_safe_redirect( admin_url( 'options-general.php#wporg-site-icon' ) );
-		exit;
+		add_settings_error( 'wporg-site-icon', 'icon-updated', __( 'Site Icon updated.' ), 'updated' );
 	}
 
 	/**
